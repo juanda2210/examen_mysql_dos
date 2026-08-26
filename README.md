@@ -645,6 +645,9 @@ END //
 
 DELIMITER ;
 
+```
+
+---
 
 ### 2. Función para verificar disponibilidad
 
@@ -726,9 +729,14 @@ BEGIN
 
 END //
 
+
+
 -- Restauramos el delimitador normal
 DELIMITER ;
 
+```
+
+---
 
 ### 3. Vista de resumen de pagos
 
@@ -778,6 +786,11 @@ INNER JOIN pagos AS p
     ON r.id_reserva = p.id_reserva;
 
 
+```
+
+---
+
+
 ### 4. Consulta de pagos mediante transferencia
 
 Se realizó una consulta para obtener información específica de los pagos realizados mediante **Transferencia**.
@@ -819,6 +832,9 @@ WHERE p.metodo_pago = 'Transferencia'
 ORDER BY
     p.monto DESC;
 
+```
+
+---
 
 ### Pruebas
 
