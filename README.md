@@ -575,3 +575,283 @@ Proyecto desarrollado con fines académicos para demostrar el uso de:
 - Triggers
 - Consultas y agregaciones
 - Auditoría de cambios
+
+
+## Examen
+
+Como parte de la evaluación y ampliación del proyecto se implementaron nuevas funcionalidades orientadas a la **auditoría de pagos, verificación de disponibilidad, generación de información mediante vistas y consulta de pagos según su método de pago**.
+
+Estas funcionalidades permiten demostrar diferentes recursos de MySQL, incluyendo:
+
+- Triggers.
+- Funciones.
+- Vistas.
+- `INNER JOIN`.
+- `WHERE`.
+- `ORDER BY`.
+- `COUNT()`.
+- Auditoría de información.
+
+---
+
+### 1. Trigger de auditoría de pagos
+
+Se creó el trigger `auditoria_pagos_trigger`, cuyo objetivo es registrar automáticamente cada nuevo pago realizado en el sistema.
+
+Para almacenar esta información se creó la tabla `auditoria_pagos`, que contiene:
+
+- ID de auditoría.
+- ID del pago.
+- Fecha y hora de la operación.
+- Usuario responsable.
+- Valor pagado.
+
+El trigger utiliza `AFTER INSERT`, por lo que se ejecuta automáticamente después de que un nuevo pago ha sido registrado correctamente en la tabla `pagos`.
+
+También se utiliza `NEW` para obtener los datos del nuevo registro insertado.
+
+```sql
+CREATE TABLE IF NOT EXISTS auditoria_pagos (
+    id_auditoria INT AUTO_INCREMENT,
+    id_pago INT NOT NULL,
+    fecha DATETIME NOT NULL,
+    usuario_responsable VARCHAR(50) NOT NULL,
+    valor_pagado DECIMAL(10,2) NOT NULL,
+
+    PRIMARY KEY (id_auditoria)
+);
+
+DELIMITER //
+
+CREATE TRIGGER auditoria_pagos_trigger
+AFTER INSERT ON pagos
+FOR EACH ROW
+BEGIN
+
+    INSERT INTO auditoria_pagos (
+        id_pago,
+        fecha,
+        usuario_responsable,
+        valor_pagado
+    )
+    VALUES (
+        NEW.id_pago,
+        NOW(),
+        'admin',
+        NEW.monto
+    );
+
+END //
+
+DELIMITER ;
+
+
+### 2. Función para verificar disponibilidad
+
+Se implementó la función `verificar_disponibilidad()`, encargada de determinar si un salón se encuentra disponible durante un intervalo de tiempo determinado.
+
+La función recibe tres parámetros:
+
+- `salon_id`: identificador del salón.
+- `fecha_inicio`: fecha y hora inicial que se desea consultar.
+- `fecha_fin`: fecha y hora final que se desea consultar.
+
+La función consulta las reservas activas y determina si existe alguna que se cruce con el horario solicitado.
+
+El resultado funciona de la siguiente manera:
+
+- `1` → El salón está disponible.
+- `0` → El salón no está disponible.
+
+La función fue declarada como `NOT DETERMINISTIC`, debido a que su resultado puede cambiar dependiendo de las reservas existentes en la base de datos.
+
+También se utiliza `READS SQL DATA`, debido a que la función consulta información almacenada en la tabla `reservas`.
+
+```sql
+DELIMITER //
+
+CREATE FUNCTION verificar_disponibilidad(
+    salon_id INT,
+    fecha_inicio DATETIME,
+    fecha_fin DATETIME
+)
+RETURNS INT
+
+-- El resultado puede cambiar dependiendo
+-- de las reservas existentes.
+NOT DETERMINISTIC
+
+-- La función lee información de la base de datos,
+-- específicamente de la tabla reservas.
+READS SQL DATA
+
+BEGIN
+
+    -- Guardará la cantidad de reservas que
+    -- se cruzan con el horario consultado.
+    DECLARE cantidad_reservas INT;
+
+    -- Contamos las reservas que cumplen las condiciones.
+    SELECT COUNT(*)
+    INTO cantidad_reservas
+    FROM reservas
+
+    -- Debe ser el salón que estamos consultando.
+    WHERE id_salon = salon_id
+
+      -- Solo consideramos reservas activas.
+      AND estado = 'Activa'
+
+      -- El inicio de una reserva existente debe ser
+      -- anterior al final del nuevo horario.
+      AND fecha_inicio < fecha_fin
+
+      -- El final de una reserva existente debe ser
+      -- posterior al inicio del nuevo horario.
+      AND fecha_fin > fecha_inicio;
+
+    -- Si existe al menos una reserva que se cruza,
+    -- el salón está ocupado.
+    IF cantidad_reservas > 0 THEN
+
+        RETURN 0;
+
+    ELSE
+
+        -- Si no existe ninguna reserva que se cruce,
+        -- el salón está disponible.
+        RETURN 1;
+
+    END IF;
+
+END //
+
+-- Restauramos el delimitador normal
+DELIMITER ;
+
+
+### 3. Vista de resumen de pagos
+
+Se creó la vista `vista_resumen_pagos` con el objetivo de facilitar la consulta de información relacionada con los pagos realizados.
+
+La vista reúne información de diferentes tablas mediante `INNER JOIN`:
+
+- `clientes`
+- `reservas`
+- `salones`
+- `pagos`
+
+De esta manera, se puede consultar en una sola vista:
+
+- **Nombre del cliente**.
+- **Nombre del salón**.
+- **Método de pago**.
+- **Fecha del pago**.
+- **Monto pagado**.
+
+```sql
+USE eventos_premier;
+
+CREATE VIEW vista_resumen_pagos AS
+
+SELECT
+
+    c.nombre_completo AS cliente,
+
+    s.nombre AS salon,
+
+    p.metodo_pago,
+
+    p.fecha_pago,
+
+    p.monto
+
+FROM reservas AS r
+
+INNER JOIN clientes AS c
+    ON r.id_cliente = c.id_cliente
+
+INNER JOIN salones AS s
+    ON r.id_salon = s.id_salon
+
+INNER JOIN pagos AS p
+    ON r.id_reserva = p.id_reserva;
+
+
+### 4. Consulta de pagos mediante transferencia
+
+Se realizó una consulta para obtener información específica de los pagos realizados mediante **Transferencia**.
+
+La consulta muestra:
+
+- **Nombre del cliente**.
+- **Nombre del salón**.
+- **Total pagado**.
+
+Para obtener esta información se relacionan las tablas `pagos`, `reservas`, `clientes` y `salones` mediante `INNER JOIN`.
+
+Además, se utiliza una condición `WHERE` para mostrar únicamente los pagos cuyo método de pago sea **Transferencia**.
+
+Finalmente, los resultados se ordenan mediante `ORDER BY` de forma descendente, permitiendo visualizar primero los pagos de mayor valor.
+
+```sql
+SELECT
+
+    c.nombre_completo AS nombre_cliente,
+
+    s.nombre AS nombre_salon,
+
+    p.monto AS total_pagado
+
+FROM pagos p
+
+INNER JOIN reservas r
+    ON p.id_reserva = r.id_reserva
+
+INNER JOIN clientes c
+    ON r.id_cliente = c.id_cliente
+
+INNER JOIN salones s
+    ON r.id_salon = s.id_salon
+
+WHERE p.metodo_pago = 'Transferencia'
+
+ORDER BY
+    p.monto DESC;
+
+
+### Pruebas
+
+Las pruebas de las funcionalidades implementadas se realizaron en **MySQL Workbench**, verificando que cada elemento funcionara correctamente y produjera los resultados esperados.
+
+Las evidencias se encuentran almacenadas en la carpeta `images/` del proyecto.
+
+#### Prueba del trigger
+
+Se comprobó que, al insertar un nuevo pago en la tabla `pagos`, el trigger `auditoria_pagos_trigger` generara automáticamente un registro en la tabla `auditoria_pagos`.
+
+![Prueba del trigger](images/prueba_de_trigger.png)
+
+---
+
+#### Prueba de la función
+
+Se verificó el funcionamiento de la función `verificar_disponibilidad()`, comprobando si un salón se encuentra disponible u ocupado según las reservas existentes y el horario consultado.
+
+![Prueba de la función](images/prueba_de_funcion.png)
+
+---
+
+#### Prueba de la vista
+
+Se comprobó la correcta creación y consulta de la vista `vista_resumen_pagos`, verificando que mostrara correctamente la información relacionada con clientes, salones y pagos.
+
+![Prueba de la vista](images/prueba_de_view.png)
+
+---
+
+#### Prueba de la consulta
+
+Se verificó la consulta de pagos realizados mediante **Transferencia**, comprobando que los resultados mostraran el nombre del cliente, el salón y el monto pagado, ordenados de mayor a menor.
+
+![Prueba de la consulta](images/prueba_de_consulta.png)

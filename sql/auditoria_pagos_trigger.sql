@@ -17,7 +17,6 @@ AFTER INSERT ON pagos
 FOR EACH ROW
 BEGIN
 
-
     INSERT INTO auditoria_pagos (
         id_pago,
         fecha,
@@ -28,7 +27,7 @@ BEGIN
         NEW.id_pago,
         NOW(),
         'admin',
-        NEW.valor_pagado
+        NEW.monto
     );
 
 END //
@@ -36,37 +35,22 @@ END //
 DELIMITER ;
 
 
--- =========================================================
--- 3. PRUEBA DEL TRIGGER
--- =========================================================
---
--- Primero registramos un nuevo pago.
---
--- IMPORTANTE:
--- Ajusta los valores de acuerdo con las columnas reales
--- de tu tabla pagos.
--- =========================================================
+
 
 INSERT INTO pagos (
-    id_reserva,
-    valor_pagado,
-    metodo_pago
+    fecha_pago,
+    monto,
+    metodo_pago,
+    id_reserva
 )
 VALUES (
-    1,
+    NOW(),
     500000,
-    'Transferencia'
+    'Transferencia',
+    1
 );
 
 
--- =========================================================
--- 4. VERIFICAMOS LA AUDITORÍA
--- =========================================================
---
--- Si el trigger funcionó correctamente, después del INSERT
--- anterior aparecerá automáticamente un nuevo registro
--- en auditoria_pagos.
--- =========================================================
 
 SELECT *
 FROM auditoria_pagos;

@@ -20,5 +20,6 @@ INNER JOIN salones AS s
 	ON r.id_salon = s.id_salon
 
 INNER JOIN pagos AS p;
+    ON r.id_reserva = p.id_reserva
 
 SELECT * FROM vista_resumen_pagos;
